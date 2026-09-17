@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simulado Supabase</title>
+    <title>Simulado Supabase Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -12,13 +12,16 @@
 
 <body class="bg-slate-100 text-slate-800 font-sans min-h-screen flex items-center justify-center p-4">
 
-    <div id="app" class="w-full max-w-2xl bg-white rounded-2xl shadow-xl overflow-hidden">
+    <div id="app" class="w-full max-w-2xl bg-white rounded-2xl shadow-xl overflow-hidden my-8">
 
+        <!-- Header -->
         <header class="bg-indigo-600 text-white p-6 flex justify-between items-center">
-            <h1 class="text-xl font-bold">Simulado</h1>
-            <span v-if="questoes.length > 0 && !finalizado" class="bg-indigo-800 text-xs px-3 py-1 rounded-full">
-                Questão {{ indiceAtual + 1 }} de {{ questoes.length }}
-            </span>
+            <div>
+                <h1 class="text-xl font-bold">Simulado Online</h1>
+                <span v-if="questoes.length > 0 && !finalizado" class="text-xs text-indigo-200">
+                    Questão {{ indiceAtual + 1 }} de {{ questoes.length }}
+                </span>
+            </div>
         </header>
 
         <main class="p-6">
@@ -38,6 +41,19 @@
 
             <!-- Tela da Questão -->
             <div v-else-if="!finalizado && questaoAtual">
+                
+                <!-- Grid Navegador de Questões -->
+                <div class="flex gap-2 mb-6 overflow-x-auto pb-2">
+                    <div v-for="(q, idx) in questoes" :key="q.id"
+                        :class="[
+                            'w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold transition-all border',
+                            obterClasseGrid(idx)
+                        ]">
+                        {{ idx + 1 }}
+                    </div>
+                </div>
+
+                <!-- Barra de Progresso -->
                 <div class="w-full bg-slate-200 h-2 rounded-full mb-6">
                     <div class="bg-indigo-600 h-2 rounded-full transition-all duration-300"
                         :style="{ width: ((indiceAtual + 1) / questoes.length) * 100 + '%' }"></div>
@@ -47,22 +63,24 @@
                     {{ questaoAtual.enunciado }}
                 </h2>
 
-                <!-- Renderiza as 4 alternativas -->
+                <!-- Renderiza as Alternativas Embaralhadas -->
                 <div class="space-y-3 mb-6">
-                    <button v-for="chave in ['alternativa1', 'alternativa2', 'alternativa3', 'alternativa4']"
-                        :key="chave" @click="selecionarResposta(chave)" :disabled="respondido" :class="[
-              'w-full text-left p-4 rounded-xl border transition-all flex items-center justify-between',
-              obterClasseBotao(chave)
-            ]">
-                        <span>{{ questaoAtual[chave] }}</span>
-                        <span v-if="respondido && chave === questaoAtual.gabarito" class="font-bold">✓</span>
-                        <span v-if="respondido && respostaSelecionada === chave && chave !== questaoAtual.gabarito"
-                            class="font-bold">✕</span>
+                    <button v-for="alt in alternativasAtuais"
+                        :key="alt.chave" 
+                        @click="selecionarResposta(alt.chave)" 
+                        :disabled="respondido" 
+                        :class="[
+                            'w-full text-left p-4 rounded-xl border transition-all flex items-center justify-between',
+                            obterClasseBotao(alt.chave)
+                        ]">
+                        <span>{{ alt.texto }}</span>
+                        <span v-if="respondido && alt.chave === questaoAtual.gabarito" class="font-bold text-emerald-600">✓</span>
+                        <span v-if="respondido && respostaSelecionada === alt.chave && alt.chave !== questaoAtual.gabarito" class="font-bold text-rose-600">✕</span>
                     </button>
                 </div>
 
                 <!-- Botão Próximo -->
-                <div v-if="respondido" class="mt-4">
+                <div v-if="respondido">
                     <button @click="proximaQuestao"
                         class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-xl transition">
                         {{ indiceAtual < questoes.length - 1 ? 'Próxima Questão' : 'Ver Resultado' }}
@@ -71,20 +89,50 @@
             </div>
 
             <!-- Tela de Resultado -->
-            <div v-else-if="finalizado" class="text-center py-8 space-y-6">
-                <h2 class="text-2xl font-bold text-slate-900">Simulado Concluído!</h2>
-                <div class="flex justify-center gap-6">
-                    <div class="bg-slate-50 p-4 rounded-xl border w-36">
-                        <span class="block text-3xl font-extrabold text-indigo-600">{{ pontuacao }}</span>
-                        <span class="text-xs text-slate-500 uppercase font-semibold">Acertos</span>
+            <div v-else-if="finalizado" class="space-y-6">
+                <div class="text-center space-y-4">
+                    
+                    <!-- Badge / Status de Desempenho -->
+                    <div class="inline-block px-4 py-1.5 rounded-full text-sm font-bold border"
+                         :class="statusDesempenho.classe">
+                        {{ statusDesempenho.texto }}
                     </div>
-                    <div class="bg-slate-50 p-4 rounded-xl border w-36">
-                        <span class="block text-3xl font-extrabold text-slate-700">{{ porcentagemAcertos }}%</span>
-                        <span class="text-xs text-slate-500 uppercase font-semibold">Aproveitamento</span>
+
+                    <h2 class="text-2xl font-bold text-slate-900">Simulado Concluído!</h2>
+                    
+                    <div class="flex justify-center gap-6">
+                        <div class="bg-slate-50 p-4 rounded-xl border w-36">
+                            <span class="block text-3xl font-extrabold text-indigo-600">{{ pontuacao }}</span>
+                            <span class="text-xs text-slate-500 uppercase font-semibold">Acertos</span>
+                        </div>
+                        <div class="bg-slate-50 p-4 rounded-xl border w-36">
+                            <span class="block text-3xl font-extrabold text-slate-700">{{ porcentagemAcertos }}%</span>
+                            <span class="text-xs text-slate-500 uppercase font-semibold">Aproveitamento</span>
+                        </div>
                     </div>
                 </div>
+
+                <!-- Lista de Revisão -->
+                <div class="mt-8 border-t pt-6 space-y-4">
+                    <h3 class="text-md font-bold text-slate-800">Revisão das Questões</h3>
+                    
+                    <div v-for="(q, index) in resumoRespostas" :key="q.id" 
+                         :class="['p-4 rounded-xl border text-sm space-y-2', q.acertou ? 'bg-emerald-50/50 border-emerald-200' : 'bg-rose-50/50 border-rose-200']">
+                        <p class="font-semibold text-slate-900">{{ index + 1 }}. {{ q.enunciado }}</p>
+                        
+                        <div class="text-xs space-y-1">
+                            <p :class="q.acertou ? 'text-emerald-700 font-medium' : 'text-rose-700 font-medium'">
+                                Sua resposta: {{ q.textoSelecionado }}
+                            </p>
+                            <p v-if="!q.acertou" class="text-slate-600">
+                                Resposta correta: <span class="font-semibold text-emerald-700">{{ q.textoGabarito }}</span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
                 <button @click="reiniciar"
-                    class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-8 rounded-xl transition">
+                    class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-8 rounded-xl transition">
                     Refazer Simulado (Novas Questões)
                 </button>
             </div>
@@ -110,6 +158,9 @@
                 const pontuacao = ref(0);
                 const finalizado = ref(false);
 
+                const alternativasAtuais = ref([]);
+                const resumoRespostas = ref([]);
+
                 const embaralharArray = (array) => {
                     const copia = [...array];
                     for (let i = copia.length - 1; i > 0; i--) {
@@ -117,6 +168,18 @@
                         [copia[i], copia[j]] = [copia[j], copia[i]];
                     }
                     return copia;
+                };
+
+                const prepararAlternativas = () => {
+                    if (!questaoAtual.value) return;
+                    const q = questaoAtual.value;
+                    const alts = [
+                        { chave: 'alternativa1', texto: q.alternativa1 },
+                        { chave: 'alternativa2', texto: q.alternativa2 },
+                        { chave: 'alternativa3', texto: q.alternativa3 },
+                        { chave: 'alternativa4', texto: q.alternativa4 }
+                    ];
+                    alternativasAtuais.value = embaralharArray(alts);
                 };
 
                 const buscarQuestoes = async () => {
@@ -137,6 +200,9 @@
 
                         const questoesEmbaralhadas = embaralharArray(data);
                         questoes.value = questoesEmbaralhadas.slice(0, Math.min(data.length, 10));
+                        
+                        resumoRespostas.value = [];
+                        prepararAlternativas();
 
                     } catch (err) {
                         erro.value = 'Erro ao carregar questões: ' + err.message;
@@ -145,44 +211,61 @@
                     }
                 };
 
-                onMounted(() => {
-                    buscarQuestoes();
-                });
+                onMounted(() => buscarQuestoes());
 
                 const questaoAtual = computed(() => questoes.value[indiceAtual.value]);
                 const porcentagemAcertos = computed(() =>
                     questoes.value.length ? Math.round((pontuacao.value / questoes.value.length) * 100) : 0
                 );
 
+                const statusDesempenho = computed(() => {
+                    const pct = porcentagemAcertos.value;
+                    if (pct >= 80) return { texto: '🏆 Desempenho Excelente!', classe: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+                    if (pct >= 60) return { texto: '👍 Aprovado!', classe: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
+                    return { texto: '📚 Precisa Praticar Mais', classe: 'bg-amber-50 text-amber-700 border-amber-200' };
+                });
+
                 const selecionarResposta = (chave) => {
                     if (respondido.value) return;
                     respostaSelecionada.value = chave;
                     respondido.value = true;
 
-                    if (chave === questaoAtual.value.gabarito) {
-                        pontuacao.value++;
-                    }
+                    const acertou = chave === questaoAtual.value.gabarito;
+                    if (acertou) pontuacao.value++;
+
+                    resumoRespostas.value.push({
+                        id: questaoAtual.value.id,
+                        enunciado: questaoAtual.value.enunciado,
+                        textoSelecionado: questaoAtual.value[chave],
+                        textoGabarito: questaoAtual.value[questaoAtual.value.gabarito],
+                        acertou
+                    });
                 };
 
                 const obterClasseBotao = (chave) => {
-                    if (!respondido.value) {
-                        return 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700';
-                    }
-                    if (chave === questaoAtual.value.gabarito) {
-                        return 'bg-emerald-50 border-emerald-500 text-emerald-800 font-medium';
-                    }
-                    if (chave === respostaSelecionada.value) {
-                        return 'bg-rose-50 border-rose-500 text-rose-800 font-medium';
-                    }
+                    if (!respondido.value) return 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700';
+                    if (chave === questaoAtual.value.gabarito) return 'bg-emerald-50 border-emerald-500 text-emerald-800 font-medium';
+                    if (chave === respostaSelecionada.value) return 'bg-rose-50 border-rose-500 text-rose-800 font-medium';
                     return 'bg-slate-50 border-slate-100 text-slate-400';
                 };
 
-                // CORREÇÃO CRÍTICA AQUI: Usando `.value` em `questoes.value.length`
+                const obterClasseGrid = (idx) => {
+                    if (idx === indiceAtual.value) return 'bg-indigo-600 text-white border-indigo-600 shadow-sm';
+                    const res = resumoRespostas.value[idx];
+                    if (res) {
+                        return res.acertou 
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300' 
+                            : 'bg-rose-100 text-rose-800 border-rose-300';
+                    }
+                    return 'bg-slate-50 text-slate-400 border-slate-200';
+                };
+
                 const proximaQuestao = () => {
                     if (indiceAtual.value < questoes.value.length - 1) {
                         indiceAtual.value++;
                         respostaSelecionada.value = null;
                         respondido.value = false;
+                        prepararAlternativas();
                     } else {
                         finalizado.value = true;
                     }
@@ -194,7 +277,6 @@
                     respondido.value = false;
                     pontuacao.value = 0;
                     finalizado.value = false;
-                    
                     buscarQuestoes();
                 };
 
@@ -204,13 +286,17 @@
                     erro,
                     indiceAtual,
                     questaoAtual,
+                    alternativasAtuais,
                     respostaSelecionada,
                     respondido,
                     pontuacao,
                     finalizado,
                     porcentagemAcertos,
+                    resumoRespostas,
+                    statusDesempenho,
                     selecionarResposta,
                     obterClasseBotao,
+                    obterClasseGrid,
                     proximaQuestao,
                     reiniciar,
                     buscarQuestoes
