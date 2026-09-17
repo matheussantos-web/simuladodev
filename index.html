@@ -5,23 +5,34 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Simulado DEV SENAI</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class'
+        }
+    </script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
-<body class="bg-slate-100 text-slate-800 font-sans min-h-screen flex items-center justify-center p-4">
+<body class="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-sans min-h-screen flex items-center justify-center p-4 transition-colors duration-200">
 
-    <div id="app" class="w-full max-w-2xl bg-white rounded-2xl shadow-xl overflow-hidden my-8">
+    <div id="app" class="w-full max-w-2xl bg-white dark:bg-slate-800 rounded-2xl shadow-xl overflow-hidden my-8 border border-slate-200 dark:border-slate-700">
 
         <!-- Header -->
-        <header class="bg-indigo-600 text-white p-6 flex justify-between items-center">
+        <header class="bg-indigo-600 dark:bg-indigo-700 text-white p-6 flex justify-between items-center">
             <div>
                 <h1 class="text-xl font-bold">Simulado DEV SENAI</h1>
                 <span v-if="questoes.length > 0 && !finalizado" class="text-xs text-indigo-200">
-                    Questão {{ indiceAtual + 1 }} de {{ questoes.length }}
+                    Questão {{ indiceAtual + 1 }} de {{ questoes.length }} (Atalhos: [1-4] e [Enter])
                 </span>
             </div>
+
+            <!-- Botão Alternar Dark Mode -->
+            <button @click="alternarModoEscuro" class="p-2 rounded-lg bg-indigo-700 dark:bg-indigo-800 hover:bg-indigo-800 text-xs transition border border-indigo-500">
+                {{ modoEscuro ? '☀️ Claro' : '🌙 Escuro' }}
+            </button>
         </header>
 
         <main class="p-6">
@@ -29,11 +40,11 @@
             <!-- Loading -->
             <div v-if="carregando" class="text-center py-12 space-y-3">
                 <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-600 border-t-transparent"></div>
-                <p class="text-slate-500">Sorteando questões...</p>
+                <p class="text-slate-500 dark:text-slate-400">Sorteando questões...</p>
             </div>
 
             <!-- Erro -->
-            <div v-else-if="erro" class="bg-red-50 text-red-700 p-4 rounded-xl border border-red-200 text-center space-y-2">
+            <div v-else-if="erro" class="bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 p-4 rounded-xl border border-red-200 dark:border-red-800 text-center space-y-2">
                 <p class="font-bold">Atenção!</p>
                 <p>{{ erro }}</p>
                 <button @click="buscarQuestoes" class="mt-2 bg-red-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-700">Tentar Novamente</button>
@@ -54,36 +65,41 @@
                 </div>
 
                 <!-- Barra de Progresso -->
-                <div class="w-full bg-slate-200 h-2 rounded-full mb-6">
-                    <div class="bg-indigo-600 h-2 rounded-full transition-all duration-300"
+                <div class="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full mb-6">
+                    <div class="bg-indigo-600 dark:bg-indigo-500 h-2 rounded-full transition-all duration-300"
                         :style="{ width: ((indiceAtual + 1) / questoes.length) * 100 + '%' }"></div>
                 </div>
 
-                <h2 class="text-lg font-semibold mb-4 text-slate-900">
+                <h2 class="text-lg font-semibold mb-4 text-slate-900 dark:text-white">
                     {{ questaoAtual.enunciado }}
                 </h2>
 
                 <!-- Renderiza as Alternativas Embaralhadas -->
                 <div class="space-y-3 mb-6">
-                    <button v-for="alt in alternativasAtuais"
+                    <button v-for="(alt, index) in alternativasAtuais"
                         :key="alt.chave" 
                         @click="selecionarResposta(alt.chave)" 
                         :disabled="respondido" 
                         :class="[
-                            'w-full text-left p-4 rounded-xl border transition-all flex items-center justify-between',
+                            'w-full text-left p-4 rounded-xl border transition-all flex items-center justify-between active:scale-[0.99]',
                             obterClasseBotao(alt.chave)
                         ]">
-                        <span>{{ alt.texto }}</span>
-                        <span v-if="respondido && alt.chave === questaoAtual.gabarito" class="font-bold text-emerald-600">✓</span>
-                        <span v-if="respondido && respostaSelecionada === alt.chave && alt.chave !== questaoAtual.gabarito" class="font-bold text-rose-600">✕</span>
+                        <div class="flex items-center gap-3">
+                            <span class="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-500 dark:text-slate-300 border border-slate-200 dark:border-slate-600">
+                                {{ index + 1 }}
+                            </span>
+                            <span>{{ alt.texto }}</span>
+                        </div>
+                        <span v-if="respondido && alt.chave === questaoAtual.gabarito" class="font-bold text-emerald-600 dark:text-emerald-400">✓</span>
+                        <span v-if="respondido && respostaSelecionada === alt.chave && alt.chave !== questaoAtual.gabarito" class="font-bold text-rose-600 dark:text-rose-400">✕</span>
                     </button>
                 </div>
 
                 <!-- Botão Próximo -->
                 <div v-if="respondido">
                     <button @click="proximaQuestao"
-                        class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-xl transition">
-                        {{ indiceAtual < questoes.length - 1 ? 'Próxima Questão' : 'Ver Resultado' }}
+                        class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-xl transition shadow-md">
+                        {{ indiceAtual < questoes.length - 1 ? 'Próxima Questão (Enter)' : 'Ver Resultado (Enter)' }}
                     </button>
                 </div>
             </div>
@@ -98,41 +114,41 @@
                         {{ statusDesempenho.texto }}
                     </div>
 
-                    <h2 class="text-2xl font-bold text-slate-900">Simulado Concluído!</h2>
+                    <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Simulado Concluído!</h2>
                     
                     <div class="flex justify-center gap-6">
-                        <div class="bg-slate-50 p-4 rounded-xl border w-36">
-                            <span class="block text-3xl font-extrabold text-indigo-600">{{ pontuacao }}</span>
-                            <span class="text-xs text-slate-500 uppercase font-semibold">Acertos</span>
+                        <div class="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl border border-slate-200 dark:border-slate-600 w-36">
+                            <span class="block text-3xl font-extrabold text-indigo-600 dark:text-indigo-400">{{ pontuacao }}</span>
+                            <span class="text-xs text-slate-500 dark:text-slate-400 uppercase font-semibold">Acertos</span>
                         </div>
-                        <div class="bg-slate-50 p-4 rounded-xl border w-36">
-                            <span class="block text-3xl font-extrabold text-slate-700">{{ porcentagemAcertos }}%</span>
-                            <span class="text-xs text-slate-500 uppercase font-semibold">Aproveitamento</span>
+                        <div class="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl border border-slate-200 dark:border-slate-600 w-36">
+                            <span class="block text-3xl font-extrabold text-slate-700 dark:text-slate-200">{{ porcentagemAcertos }}%</span>
+                            <span class="text-xs text-slate-500 dark:text-slate-400 uppercase font-semibold">Aproveitamento</span>
                         </div>
                     </div>
                 </div>
 
                 <!-- Lista de Revisão -->
-                <div class="mt-8 border-t pt-6 space-y-4">
-                    <h3 class="text-md font-bold text-slate-800">Revisão das Questões</h3>
+                <div class="mt-8 border-t border-slate-200 dark:border-slate-700 pt-6 space-y-4">
+                    <h3 class="text-md font-bold text-slate-800 dark:text-slate-200">Revisão das Questões</h3>
                     
                     <div v-for="(q, index) in resumoRespostas" :key="q.id" 
-                         :class="['p-4 rounded-xl border text-sm space-y-2', q.acertou ? 'bg-emerald-50/50 border-emerald-200' : 'bg-rose-50/50 border-rose-200']">
-                        <p class="font-semibold text-slate-900">{{ index + 1 }}. {{ q.enunciado }}</p>
+                         :class="['p-4 rounded-xl border text-sm space-y-2', q.acertou ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800' : 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-800']">
+                        <p class="font-semibold text-slate-900 dark:text-slate-100">{{ index + 1 }}. {{ q.enunciado }}</p>
                         
                         <div class="text-xs space-y-1">
-                            <p :class="q.acertou ? 'text-emerald-700 font-medium' : 'text-rose-700 font-medium'">
+                            <p :class="q.acertou ? 'text-emerald-700 dark:text-emerald-400 font-medium' : 'text-rose-700 dark:text-rose-400 font-medium'">
                                 Sua resposta: {{ q.textoSelecionado }}
                             </p>
-                            <p v-if="!q.acertou" class="text-slate-600">
-                                Resposta correta: <span class="font-semibold text-emerald-700">{{ q.textoGabarito }}</span>
+                            <p v-if="!q.acertou" class="text-slate-600 dark:text-slate-400">
+                                Resposta correta: <span class="font-semibold text-emerald-700 dark:text-emerald-400">{{ q.textoGabarito }}</span>
                             </p>
                         </div>
                     </div>
                 </div>
 
                 <button @click="reiniciar"
-                    class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-8 rounded-xl transition">
+                    class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-8 rounded-xl transition shadow-md">
                     Refazer Simulado (Novas Questões)
                 </button>
             </div>
@@ -141,7 +157,7 @@
     </div>
 
     <script>
-        const { createApp, ref, computed, onMounted } = Vue;
+        const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
 
         const SUPABASE_URL = 'https://tbbhodmwuezhvhyvgovt.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_GQn4-IUOsS7AlJ6ExmevGw_CA6KmKRb';
@@ -157,9 +173,20 @@
                 const respondido = ref(false);
                 const pontuacao = ref(0);
                 const finalizado = ref(false);
+                const modoEscuro = ref(false);
 
                 const alternativasAtuais = ref([]);
                 const resumoRespostas = ref([]);
+
+                const alternarModoEscuro = () => {
+                    modoEscuro.value = !modoEscuro.value;
+                    const htmlElement = document.documentElement;
+                    if (modoEscuro.value) {
+                        htmlElement.classList.add('dark');
+                    } else {
+                        htmlElement.classList.remove('dark');
+                    }
+                };
 
                 const embaralharArray = (array) => {
                     const copia = [...array];
@@ -211,7 +238,33 @@
                     }
                 };
 
-                onMounted(() => buscarQuestoes());
+                const manipularTeclado = (e) => {
+                    if (carregando.value || erro.value) return;
+
+                    if (!finalizado.value) {
+                        if (!respondido.value) {
+                            if (['1', '2', '3', '4'].includes(e.key)) {
+                                const idx = parseInt(e.key) - 1;
+                                if (alternativasAtuais.value[idx]) {
+                                    selecionarResposta(alternativasAtuais.value[idx].chave);
+                                }
+                            }
+                        } else if (e.key === 'Enter' || e.key === ' ') {
+                            proximaQuestao();
+                        }
+                    } else if (e.key === 'Enter') {
+                        reiniciar();
+                    }
+                };
+
+                onMounted(() => {
+                    buscarQuestoes();
+                    window.addEventListener('keydown', manipularTeclado);
+                });
+
+                onUnmounted(() => {
+                    window.removeEventListener('keydown', manipularTeclado);
+                });
 
                 const questaoAtual = computed(() => questoes.value[indiceAtual.value]);
                 const porcentagemAcertos = computed(() =>
@@ -220,9 +273,9 @@
 
                 const statusDesempenho = computed(() => {
                     const pct = porcentagemAcertos.value;
-                    if (pct >= 80) return { texto: '🏆 Desempenho Excelente!', classe: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
-                    if (pct >= 60) return { texto: '👍 Aprovado!', classe: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
-                    return { texto: '📚 Precisa Praticar Mais', classe: 'bg-amber-50 text-amber-700 border-amber-200' };
+                    if (pct >= 80) return { texto: '🏆 Desempenho Excelente!', classe: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' };
+                    if (pct >= 60) return { texto: '👍 Aprovado!', classe: 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' };
+                    return { texto: '📚 Precisa Praticar Mais', classe: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800' };
                 });
 
                 const selecionarResposta = (chave) => {
@@ -243,10 +296,10 @@
                 };
 
                 const obterClasseBotao = (chave) => {
-                    if (!respondido.value) return 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700';
-                    if (chave === questaoAtual.value.gabarito) return 'bg-emerald-50 border-emerald-500 text-emerald-800 font-medium';
-                    if (chave === respostaSelecionada.value) return 'bg-rose-50 border-rose-500 text-rose-800 font-medium';
-                    return 'bg-slate-50 border-slate-100 text-slate-400';
+                    if (!respondido.value) return 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/50 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200';
+                    if (chave === questaoAtual.value.gabarito) return 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-800 dark:text-emerald-300 font-medium';
+                    if (chave === respostaSelecionada.value) return 'bg-rose-50 dark:bg-rose-950/40 border-rose-500 text-rose-800 dark:text-rose-300 font-medium';
+                    return 'bg-slate-50 dark:bg-slate-800/40 border-slate-100 dark:border-slate-700/50 text-slate-400 dark:text-slate-500';
                 };
 
                 const obterClasseGrid = (idx) => {
@@ -254,10 +307,10 @@
                     const res = resumoRespostas.value[idx];
                     if (res) {
                         return res.acertou 
-                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300' 
-                            : 'bg-rose-100 text-rose-800 border-rose-300';
+                            ? 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700' 
+                            : 'bg-rose-100 dark:bg-rose-900/50 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-700';
                     }
-                    return 'bg-slate-50 text-slate-400 border-slate-200';
+                    return 'bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700';
                 };
 
                 const proximaQuestao = () => {
@@ -294,6 +347,8 @@
                     porcentagemAcertos,
                     resumoRespostas,
                     statusDesempenho,
+                    modoEscuro,
+                    alternarModoEscuro,
                     selecionarResposta,
                     obterClasseBotao,
                     obterClasseGrid,
