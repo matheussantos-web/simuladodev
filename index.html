@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulado Supabase</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen flex items-center justify-center p-4">
+
+    <div id="app" class="w-full max-w-2xl bg-white rounded-2xl shadow-xl overflow-hidden">
+
+        <header class="bg-indigo-600 text-white p-6 flex justify-between items-center">
+            <h1 class="text-xl font-bold">Simulado</h1>
+            <span v-if="questoes.length > 0 && !finalizado" class="bg-indigo-800 text-xs px-3 py-1 rounded-full">
+                Questão {{ indiceAtual + 1 }} de {{ questoes.length }}
+            </span>
+        </header>
+
+        <main class="p-6">
+
+            <!-- Loading -->
+            <div v-if="carregando" class="text-center py-12 space-y-3">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-600 border-t-transparent"></div>
+                <p class="text-slate-500">Sorteando questões...</p>
+            </div>
+
+            <!-- Erro -->
+            <div v-else-if="erro" class="bg-red-50 text-red-700 p-4 rounded-xl border border-red-200 text-center space-y-2">
+                <p class="font-bold">Atenção!</p>
+                <p>{{ erro }}</p>
+                <button @click="buscarQuestoes" class="mt-2 bg-red-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-700">Tentar Novamente</button>
+            </div>
+
+            <!-- Tela da Questão -->
+            <div v-else-if="!finalizado && questaoAtual">
+                <div class="w-full bg-slate-200 h-2 rounded-full mb-6">
+                    <div class="bg-indigo-600 h-2 rounded-full transition-all duration-300"
+                        :style="{ width: ((indiceAtual + 1) / questoes.length) * 100 + '%' }"></div>
+                </div>
+
+                <h2 class="text-lg font-semibold mb-4 text-slate-900">
+                    {{ questaoAtual.enunciado }}
+                </h2>
+
+                <!-- Renderiza as 4 alternativas -->
+                <div class="space-y-3 mb-6">
+                    <button v-for="chave in ['alternativa1', 'alternativa2', 'alternativa3', 'alternativa4']"
+                        :key="chave" @click="selecionarResposta(chave)" :disabled="respondido" :class="[
+              'w-full text-left p-4 rounded-xl border transition-all flex items-center justify-between',
+              obterClasseBotao(chave)
+            ]">
+                        <span>{{ questaoAtual[chave] }}</span>
+                        <span v-if="respondido && chave === questaoAtual.gabarito" class="font-bold">✓</span>
+                        <span v-if="respondido && respostaSelecionada === chave && chave !== questaoAtual.gabarito"
+                            class="font-bold">✕</span>
+                    </button>
+                </div>
+
+                <!-- Botão Próximo -->
+                <div v-if="respondido" class="mt-4">
+                    <button @click="proximaQuestao"
+                        class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-xl transition">
+                        {{ indiceAtual < questoes.length - 1 ? 'Próxima Questão' : 'Ver Resultado' }}
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tela de Resultado -->
+            <div v-else-if="finalizado" class="text-center py-8 space-y-6">
+                <h2 class="text-2xl font-bold text-slate-900">Simulado Concluído!</h2>
+                <div class="flex justify-center gap-6">
+                    <div class="bg-slate-50 p-4 rounded-xl border w-36">
+                        <span class="block text-3xl font-extrabold text-indigo-600">{{ pontuacao }}</span>
+                        <span class="text-xs text-slate-500 uppercase font-semibold">Acertos</span>
+                    </div>
+                    <div class="bg-slate-50 p-4 rounded-xl border w-36">
+                        <span class="block text-3xl font-extrabold text-slate-700">{{ porcentagemAcertos }}%</span>
+                        <span class="text-xs text-slate-500 uppercase font-semibold">Aproveitamento</span>
+                    </div>
+                </div>
+                <button @click="reiniciar"
+                    class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-8 rounded-xl transition">
+                    Refazer Simulado (Novas Questões)
+                </button>
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        const SUPABASE_URL = 'https://tbbhodmwuezhvhyvgovt.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_GQn4-IUOsS7AlJ6ExmevGw_CA6KmKRb';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        createApp({
+            setup() {
+                const questoes = ref([]);
+                const carregando = ref(true);
+                const erro = ref(null);
+                const indiceAtual = ref(0);
+                const respostaSelecionada = ref(null);
+                const respondido = ref(false);
+                const pontuacao = ref(0);
+                const finalizado = ref(false);
+
+                const embaralharArray = (array) => {
+                    const copia = [...array];
+                    for (let i = copia.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [copia[i], copia[j]] = [copia[j], copia[i]];
+                    }
+                    return copia;
+                };
+
+                const buscarQuestoes = async () => {
+                    carregando.value = true;
+                    erro.value = null;
+
+                    try {
+                        const { data, error } = await supabaseClient
+                            .from('questoes')
+                            .select('id, enunciado, alternativa1, alternativa2, alternativa3, alternativa4, gabarito');
+
+                        if (error) throw error;
+
+                        if (!data || data.length === 0) {
+                            erro.value = 'O banco de dados não retornou nenhuma questão.';
+                            return;
+                        }
+
+                        const questoesEmbaralhadas = embaralharArray(data);
+                        questoes.value = questoesEmbaralhadas.slice(0, Math.min(data.length, 10));
+
+                    } catch (err) {
+                        erro.value = 'Erro ao carregar questões: ' + err.message;
+                    } finally {
+                        carregando.value = false;
+                    }
+                };
+
+                onMounted(() => {
+                    buscarQuestoes();
+                });
+
+                const questaoAtual = computed(() => questoes.value[indiceAtual.value]);
+                const porcentagemAcertos = computed(() =>
+                    questoes.value.length ? Math.round((pontuacao.value / questoes.value.length) * 100) : 0
+                );
+
+                const selecionarResposta = (chave) => {
+                    if (respondido.value) return;
+                    respostaSelecionada.value = chave;
+                    respondido.value = true;
+
+                    if (chave === questaoAtual.value.gabarito) {
+                        pontuacao.value++;
+                    }
+                };
+
+                const obterClasseBotao = (chave) => {
+                    if (!respondido.value) {
+                        return 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700';
+                    }
+                    if (chave === questaoAtual.value.gabarito) {
+                        return 'bg-emerald-50 border-emerald-500 text-emerald-800 font-medium';
+                    }
+                    if (chave === respostaSelecionada.value) {
+                        return 'bg-rose-50 border-rose-500 text-rose-800 font-medium';
+                    }
+                    return 'bg-slate-50 border-slate-100 text-slate-400';
+                };
+
+                // CORREÇÃO CRÍTICA AQUI: Usando `.value` em `questoes.value.length`
+                const proximaQuestao = () => {
+                    if (indiceAtual.value < questoes.value.length - 1) {
+                        indiceAtual.value++;
+                        respostaSelecionada.value = null;
+                        respondido.value = false;
+                    } else {
+                        finalizado.value = true;
+                    }
+                };
+
+                const reiniciar = () => {
+                    indiceAtual.value = 0;
+                    respostaSelecionada.value = null;
+                    respondido.value = false;
+                    pontuacao.value = 0;
+                    finalizado.value = false;
+                    
+                    buscarQuestoes();
+                };
+
+                return {
+                    questoes,
+                    carregando,
+                    erro,
+                    indiceAtual,
+                    questaoAtual,
+                    respostaSelecionada,
+                    respondido,
+                    pontuacao,
+                    finalizado,
+                    porcentagemAcertos,
+                    selecionarResposta,
+                    obterClasseBotao,
+                    proximaQuestao,
+                    reiniciar,
+                    buscarQuestoes
+                };
+            }
+        }).mount('#app');
+    </script>
+
+</body>
+
+</html>
