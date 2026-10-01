@@ -40,7 +40,7 @@
             <!-- Loading -->
             <div v-if="carregando" class="text-center py-12 space-y-3">
                 <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-600 border-t-transparent"></div>
-                <p class="text-slate-500 dark:text-slate-400">Sorteando questões...</p>
+                <p class="text-slate-500 dark:text-slate-400">Carregando questões...</p>
             </div>
 
             <!-- Configuração inicial -->
@@ -48,17 +48,21 @@
                 <div>
                     <h2 class="text-xl font-bold text-slate-900 dark:text-white">Escolha seu simulado</h2>
                     <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">Quantas questões você quer responder?</p>
+                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        {{ bancoQuestoes.length }} questões disponíveis no banco.
+                    </p>
                 </div>
                 <div class="mx-auto max-w-xs text-left">
                     <label for="quantidadeQuestoes" class="block text-sm font-medium mb-2">Quantidade de questões</label>
                     <select id="quantidadeQuestoes" v-model.number="quantidadeSelecionada"
                         class="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                        <option v-for="quantidade in opcoesQuantidade" :key="quantidade" :value="quantidade">
-                            {{ quantidade }} questões
+                        <option v-for="quantidade in opcoesQuantidadeRenderizadas" :key="quantidade" :value="quantidade"
+                            :disabled="quantidade > bancoQuestoes.length">
+                            {{ quantidade }} questões{{ quantidade > bancoQuestoes.length ? ' (indisponível)' : '' }}
                         </option>
                     </select>
                 </div>
-                <button @click="buscarQuestoes"
+                <button @click="iniciarSimulado"
                     class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-xl transition shadow-md">
                     Iniciar Simulado
                 </button>
@@ -152,6 +156,10 @@
 
                 <!-- Botão Próximo -->
                 <div v-if="respondido">
+                    <div class="mb-6 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/30 p-4">
+                        <h3 class="font-bold text-indigo-900 dark:text-indigo-200 mb-1">Explicação</h3>
+                        <p class="text-sm text-indigo-900 dark:text-indigo-100">{{ explicacaoAtual }}</p>
+                    </div>
                     <button @click="proximaQuestao"
                         class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-xl transition shadow-md">
                         {{ indiceAtual < questoes.length - 1 ? 'Próxima Questão (Enter)' : 'Ver Resultado (Enter)' }}
@@ -221,9 +229,15 @@
         createApp({
             setup() {
                 const questoes = ref([]);
-                const carregando = ref(false);
+                const bancoQuestoes = ref([]);
+                const carregando = ref(true);
                 const erro = ref(null);
                 const opcoesQuantidade = [10, 20, 50, 100];
+                const opcoesQuantidadeRenderizadas = computed(() =>
+                    bancoQuestoes.value.length > 0 && bancoQuestoes.value.length < 10
+                        ? [bancoQuestoes.value.length, ...opcoesQuantidade]
+                        : opcoesQuantidade
+                );
                 const quantidadeSelecionada = ref(10);
                 const indiceAtual = ref(0);
                 const respostaSelecionada = ref(null);
@@ -274,26 +288,40 @@
                     try {
                         const { data, error } = await supabaseClient
                             .from('questoes')
-                            .select('id, enunciado, alternativa1, alternativa2, alternativa3, alternativa4, gabarito');
+                            .select('*');
 
                         if (error) throw error;
 
                         if (!data || data.length === 0) {
+                            bancoQuestoes.value = [];
                             erro.value = 'O banco de dados não retornou nenhuma questão.';
                             return;
                         }
 
-                        const questoesEmbaralhadas = embaralharArray(data);
-                        questoes.value = questoesEmbaralhadas.slice(0, Math.min(data.length, quantidadeSelecionada.value));
-                        
-                        resumoRespostas.value = [];
-                        prepararAlternativas();
+                        bancoQuestoes.value = data;
+                        const quantidadesValidas = opcoesQuantidade.filter(quantidade => quantidade <= data.length);
+                        if (quantidadeSelecionada.value > data.length) {
+                            quantidadeSelecionada.value = quantidadesValidas.at(-1) || data.length;
+                        }
 
                     } catch (err) {
                         erro.value = 'Erro ao carregar questões: ' + err.message;
                     } finally {
                         carregando.value = false;
                     }
+                };
+
+                const iniciarSimulado = () => {
+                    const questoesEmbaralhadas = embaralharArray(bancoQuestoes.value);
+                    questoes.value = questoesEmbaralhadas.slice(0, quantidadeSelecionada.value);
+                    indiceAtual.value = 0;
+                    respostaSelecionada.value = null;
+                    respondido.value = false;
+                    pontuacao.value = 0;
+                    finalizado.value = false;
+                    mapaAberto.value = false;
+                    resumoRespostas.value = [];
+                    prepararAlternativas();
                 };
 
                 const manipularTeclado = (e) => {
@@ -320,6 +348,7 @@
                 };
 
                 onMounted(() => {
+                    buscarQuestoes();
                     window.addEventListener('keydown', manipularTeclado);
                 });
 
@@ -328,6 +357,9 @@
                 });
 
                 const questaoAtual = computed(() => questoes.value[indiceAtual.value]);
+                const explicacaoAtual = computed(() =>
+                    questaoAtual.value?.explicacao?.trim() || 'Explicação ainda não cadastrada para esta questão.'
+                );
                 const porcentagemAcertos = computed(() =>
                     questoes.value.length ? Math.round((pontuacao.value / questoes.value.length) * 100) : 0
                 );
@@ -352,6 +384,7 @@
                         enunciado: questaoAtual.value.enunciado,
                         textoSelecionado: questaoAtual.value[chave],
                         textoGabarito: questaoAtual.value[questaoAtual.value.gabarito],
+                        explicacao: questaoAtual.value.explicacao || '',
                         acertou
                     });
                 };
@@ -391,11 +424,12 @@
                     respondido.value = false;
                     pontuacao.value = 0;
                     finalizado.value = false;
-                    buscarQuestoes();
+                    iniciarSimulado();
                 };
 
                 return {
                     questoes,
+                    bancoQuestoes,
                     carregando,
                     erro,
                     indiceAtual,
@@ -411,13 +445,16 @@
                     modoEscuro,
                     mapaAberto,
                     opcoesQuantidade,
+                    opcoesQuantidadeRenderizadas,
                     quantidadeSelecionada,
+                    explicacaoAtual,
                     alternarModoEscuro,
                     selecionarResposta,
                     obterClasseBotao,
                     obterClasseGrid,
                     proximaQuestao,
                     reiniciar,
+                    iniciarSimulado,
                     buscarQuestoes
                 };
             }
