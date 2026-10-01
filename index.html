@@ -43,6 +43,27 @@
                 <p class="text-slate-500 dark:text-slate-400">Sorteando questões...</p>
             </div>
 
+            <!-- Configuração inicial -->
+            <div v-else-if="questoes.length === 0 && !erro" class="py-8 space-y-5 text-center">
+                <div>
+                    <h2 class="text-xl font-bold text-slate-900 dark:text-white">Escolha seu simulado</h2>
+                    <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">Quantas questões você quer responder?</p>
+                </div>
+                <div class="mx-auto max-w-xs text-left">
+                    <label for="quantidadeQuestoes" class="block text-sm font-medium mb-2">Quantidade de questões</label>
+                    <select id="quantidadeQuestoes" v-model.number="quantidadeSelecionada"
+                        class="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <option v-for="quantidade in opcoesQuantidade" :key="quantidade" :value="quantidade">
+                            {{ quantidade }} questões
+                        </option>
+                    </select>
+                </div>
+                <button @click="buscarQuestoes"
+                    class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-xl transition shadow-md">
+                    Iniciar Simulado
+                </button>
+            </div>
+
             <!-- Erro -->
             <div v-else-if="erro" class="bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 p-4 rounded-xl border border-red-200 dark:border-red-800 text-center space-y-2">
                 <p class="font-bold">Atenção!</p>
@@ -53,15 +74,49 @@
             <!-- Tela da Questão -->
             <div v-else-if="!finalizado && questaoAtual">
                 
-                <!-- Grid Navegador de Questões -->
-                <div class="flex gap-2 mb-6 overflow-x-auto pb-2">
-                    <div v-for="(q, idx) in questoes" :key="q.id"
-                        :class="[
-                            'w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold transition-all border',
-                            obterClasseGrid(idx)
-                        ]">
-                        {{ idx + 1 }}
-                    </div>
+                <!-- Resumo e mapa de questões -->
+                <div class="flex justify-between items-center mb-6">
+                    <span class="text-sm text-slate-500 dark:text-slate-400">
+                        {{ resumoRespostas.length }} de {{ questoes.length }} respondidas
+                    </span>
+                    <button @click="mapaAberto = true" :aria-expanded="mapaAberto" aria-haspopup="dialog"
+                        class="text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300">
+                        Ver mapa
+                    </button>
+                </div>
+
+                <div v-if="mapaAberto" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"
+                    @click.self="mapaAberto = false">
+                    <section role="dialog" aria-modal="true" aria-labelledby="tituloMapa"
+                        class="w-full max-w-lg max-h-[80vh] overflow-hidden rounded-2xl bg-white dark:bg-slate-800 shadow-2xl border border-slate-200 dark:border-slate-700">
+                        <div class="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700">
+                            <div>
+                                <h2 id="tituloMapa" class="font-bold text-slate-900 dark:text-white">Mapa de questões</h2>
+                                <p class="text-xs text-slate-500 dark:text-slate-400">
+                                    {{ resumoRespostas.length }} de {{ questoes.length }} respondidas
+                                </p>
+                            </div>
+                            <button @click="mapaAberto = false" aria-label="Fechar mapa de questões"
+                                class="w-8 h-8 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 dark:text-slate-300">
+                                ✕
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-10 gap-1 sm:gap-2 max-h-[55vh] overflow-y-auto p-4">
+                            <div v-for="(q, idx) in questoes" :key="q.id"
+                                :class="[
+                                    'aspect-square min-w-0 rounded-md flex items-center justify-center text-[10px] sm:text-xs font-bold transition-all border',
+                                    obterClasseGrid(idx)
+                                ]">
+                                {{ idx + 1 }}
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap gap-x-4 gap-y-2 px-4 pb-4 text-xs text-slate-500 dark:text-slate-400">
+                            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-indigo-600"></span>Atual</span>
+                            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-emerald-200 border border-emerald-300"></span>Acertou</span>
+                            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-rose-200 border border-rose-300"></span>Errou</span>
+                            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-slate-100 border border-slate-200"></span>Não respondida</span>
+                        </div>
+                    </section>
                 </div>
 
                 <!-- Barra de Progresso -->
@@ -166,14 +221,17 @@
         createApp({
             setup() {
                 const questoes = ref([]);
-                const carregando = ref(true);
+                const carregando = ref(false);
                 const erro = ref(null);
+                const opcoesQuantidade = [10, 20, 50, 100];
+                const quantidadeSelecionada = ref(10);
                 const indiceAtual = ref(0);
                 const respostaSelecionada = ref(null);
                 const respondido = ref(false);
                 const pontuacao = ref(0);
                 const finalizado = ref(false);
                 const modoEscuro = ref(false);
+                const mapaAberto = ref(false);
 
                 const alternativasAtuais = ref([]);
                 const resumoRespostas = ref([]);
@@ -226,7 +284,7 @@
                         }
 
                         const questoesEmbaralhadas = embaralharArray(data);
-                        questoes.value = questoesEmbaralhadas.slice(0, Math.min(data.length, 10));
+                        questoes.value = questoesEmbaralhadas.slice(0, Math.min(data.length, quantidadeSelecionada.value));
                         
                         resumoRespostas.value = [];
                         prepararAlternativas();
@@ -240,6 +298,10 @@
 
                 const manipularTeclado = (e) => {
                     if (carregando.value || erro.value) return;
+                    if (mapaAberto.value) {
+                        if (e.key === 'Escape') mapaAberto.value = false;
+                        return;
+                    }
 
                     if (!finalizado.value) {
                         if (!respondido.value) {
@@ -258,7 +320,6 @@
                 };
 
                 onMounted(() => {
-                    buscarQuestoes();
                     window.addEventListener('keydown', manipularTeclado);
                 });
 
@@ -348,6 +409,9 @@
                     resumoRespostas,
                     statusDesempenho,
                     modoEscuro,
+                    mapaAberto,
+                    opcoesQuantidade,
+                    quantidadeSelecionada,
                     alternarModoEscuro,
                     selecionarResposta,
                     obterClasseBotao,
