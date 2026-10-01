@@ -129,9 +129,19 @@
                         :style="{ width: ((indiceAtual + 1) / questoes.length) * 100 + '%' }"></div>
                 </div>
 
-                <h2 class="text-lg font-semibold mb-4 text-slate-900 dark:text-white">
-                    {{ questaoAtual.enunciado }}
-                </h2>
+                <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-4">
+                    <h2 class="text-lg font-semibold text-slate-900 dark:text-white flex-1">
+                        {{ questaoAtual.enunciado }}
+                    </h2>
+                    <button @click="lerQuestao" :aria-pressed="leituraEmAndamento"
+                        title="Ler enunciado, alternativas e explicação"
+                        class="shrink-0 inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-200 dark:border-indigo-700 px-3 py-2 text-sm font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition">
+                        {{ leituraEmAndamento ? '⏹ Parar leitura' : '🔊 Ouvir questão' }}
+                    </button>
+                </div>
+                <p v-if="erroLeitura" role="status" class="mb-4 text-sm text-amber-700 dark:text-amber-300">
+                    {{ erroLeitura }}
+                </p>
 
                 <!-- Renderiza as Alternativas Embaralhadas -->
                 <div class="space-y-3 mb-6">
@@ -246,9 +256,12 @@
                 const finalizado = ref(false);
                 const modoEscuro = ref(false);
                 const mapaAberto = ref(false);
+                const leituraEmAndamento = ref(false);
+                const erroLeitura = ref('');
 
                 const alternativasAtuais = ref([]);
                 const resumoRespostas = ref([]);
+                let falaAtual = null;
 
                 const alternarModoEscuro = () => {
                     modoEscuro.value = !modoEscuro.value;
@@ -354,12 +367,62 @@
 
                 onUnmounted(() => {
                     window.removeEventListener('keydown', manipularTeclado);
+                    pararLeitura();
                 });
 
                 const questaoAtual = computed(() => questoes.value[indiceAtual.value]);
                 const explicacaoAtual = computed(() =>
                     questaoAtual.value?.explicacao?.trim() || 'Explicação ainda não cadastrada para esta questão.'
                 );
+                const pararLeitura = () => {
+                    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+                    falaAtual = null;
+                    leituraEmAndamento.value = false;
+                };
+                const lerQuestao = () => {
+                    if (!questaoAtual.value) return;
+                    if (leituraEmAndamento.value) {
+                        pararLeitura();
+                        return;
+                    }
+                    if (!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) {
+                        erroLeitura.value = 'Este navegador não oferece leitura em voz alta.';
+                        return;
+                    }
+
+                    const vozes = window.speechSynthesis.getVoices();
+                    const vozPortugues = vozes.find(voz => voz.lang.toLowerCase() === 'pt-br')
+                        || vozes.find(voz => voz.lang.toLowerCase().startsWith('pt'));
+                    if (!vozPortugues) {
+                        erroLeitura.value = 'Nenhuma voz em português está disponível no navegador.';
+                        return;
+                    }
+
+                    erroLeitura.value = '';
+                    const partesTexto = [
+                        `Questão ${indiceAtual.value + 1}. ${questaoAtual.value.enunciado}`,
+                        ...alternativasAtuais.value.map((alternativa, index) => `Alternativa ${index + 1}: ${alternativa.texto}`)
+                    ];
+                    if (respondido.value) partesTexto.push(`Explicação: ${explicacaoAtual.value}`);
+
+                    falaAtual = new SpeechSynthesisUtterance(partesTexto.join('. '));
+                    falaAtual.lang = 'pt-BR';
+                    falaAtual.rate = 0.95;
+                    falaAtual.pitch = 1.08;
+                    falaAtual.voice = vozes.find(voz => voz.lang.toLowerCase() === 'pt-br' && /google/i.test(voz.name))
+                        || vozPortugues;
+                    falaAtual.onend = () => {
+                        leituraEmAndamento.value = false;
+                        falaAtual = null;
+                    };
+                    falaAtual.onerror = () => {
+                        leituraEmAndamento.value = false;
+                        falaAtual = null;
+                    };
+                    leituraEmAndamento.value = true;
+                    window.speechSynthesis.cancel();
+                    window.speechSynthesis.speak(falaAtual);
+                };
                 const porcentagemAcertos = computed(() =>
                     questoes.value.length ? Math.round((pontuacao.value / questoes.value.length) * 100) : 0
                 );
@@ -373,6 +436,7 @@
 
                 const selecionarResposta = (chave) => {
                     if (respondido.value) return;
+                    pararLeitura();
                     respostaSelecionada.value = chave;
                     respondido.value = true;
 
@@ -408,6 +472,7 @@
                 };
 
                 const proximaQuestao = () => {
+                    pararLeitura();
                     if (indiceAtual.value < questoes.value.length - 1) {
                         indiceAtual.value++;
                         respostaSelecionada.value = null;
@@ -444,12 +509,15 @@
                     statusDesempenho,
                     modoEscuro,
                     mapaAberto,
+                    leituraEmAndamento,
+                    erroLeitura,
                     opcoesQuantidade,
                     opcoesQuantidadeRenderizadas,
                     quantidadeSelecionada,
                     explicacaoAtual,
                     alternarModoEscuro,
                     selecionarResposta,
+                    lerQuestao,
                     obterClasseBotao,
                     obterClasseGrid,
                     proximaQuestao,
