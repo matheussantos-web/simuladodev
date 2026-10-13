@@ -43,6 +43,44 @@
                 <p class="text-slate-500 dark:text-slate-400">Carregando questões...</p>
             </div>
 
+            <!-- Login -->
+            <div v-else-if="!autenticado" class="py-8 space-y-5">
+                <div class="text-center">
+                    <h2 class="text-xl font-bold text-slate-900 dark:text-white">Entrar no simulado</h2>
+                    <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">Selecione seu usuário e informe sua senha.</p>
+                </div>
+
+                <form class="mx-auto max-w-sm space-y-4" @submit.prevent="entrar">
+                    <div>
+                        <label for="usuario" class="block text-sm font-medium mb-2">Usuário</label>
+                        <select id="usuario" v-model="usuarioSelecionado" required
+                            :disabled="carregandoUsuarios || usuarios.length === 0"
+                            class="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-60">
+                            <option value="" disabled>Selecione seu nome</option>
+                            <option v-for="usuario in usuarios" :key="usuario.id" :value="usuario.id">
+                                {{ usuario.nome.trim() }}
+                            </option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="senha" class="block text-sm font-medium mb-2">Senha</label>
+                        <input id="senha" v-model="senha" type="password" autocomplete="current-password" required
+                            class="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <p v-if="carregandoUsuarios" class="text-sm text-slate-500 dark:text-slate-400">Carregando usuários...</p>
+                    <p v-if="erroLogin" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ erroLogin }}</p>
+                    <button type="submit" :disabled="carregandoUsuarios || usuarios.length === 0 || !usuarioSelecionado || !senha"
+                        class="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 rounded-xl transition shadow-md">
+                        Entrar
+                    </button>
+                    <button v-if="erroCarregamentoUsuarios" type="button" @click="buscarUsuarios"
+                        :disabled="carregandoUsuarios"
+                        class="w-full border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 font-semibold py-3 px-6 rounded-xl transition">
+                        Tentar carregar usuários novamente
+                    </button>
+                </form>
+            </div>
+
             <!-- Configuração inicial -->
             <div v-else-if="questoes.length === 0 && !erro" class="py-8 space-y-5 text-center">
                 <div>
@@ -199,6 +237,17 @@
                             <span class="text-xs text-slate-500 dark:text-slate-400 uppercase font-semibold">Aproveitamento</span>
                         </div>
                     </div>
+
+                    <div class="mx-auto max-w-sm rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-4">
+                        <p class="font-bold text-amber-800 dark:text-amber-300">+{{ pontosQuiz }} moedas</p>
+                        <p v-if="salvandoPontuacao" class="mt-1 text-sm text-amber-700 dark:text-amber-400">Atualizando seu saldo...</p>
+                        <p v-else-if="erroPontuacao" role="alert" class="mt-1 text-sm text-red-700 dark:text-red-400">
+                            Não foi possível salvar as moedas: {{ erroPontuacao }}
+                        </p>
+                        <p v-else-if="saldoMoedas !== null" class="mt-1 text-sm text-amber-700 dark:text-amber-400">
+                            Saldo atualizado: {{ saldoMoedas }} moedas
+                        </p>
+                    </div>
                 </div>
 
                 <!-- Lista de Revisão -->
@@ -220,8 +269,8 @@
                     </div>
                 </div>
 
-                <button @click="reiniciar"
-                    class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-8 rounded-xl transition shadow-md">
+                <button @click="reiniciar" :disabled="salvandoPontuacao"
+                    class="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 px-8 rounded-xl transition shadow-md">
                     Refazer Simulado (Novas Questões)
                 </button>
             </div>
@@ -235,6 +284,8 @@
         const SUPABASE_URL = 'https://tbbhodmwuezhvhyvgovt.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_GQn4-IUOsS7AlJ6ExmevGw_CA6KmKRb';
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const API_CARTEIRA_URL = 'https://onlinestorage.you.tec.br/api/getkey/senai/coinsnew';
+        const API_GRAVAR_URL = 'https://onlinestorage.you.tec.br/api/';
 
         createApp({
             setup() {
@@ -258,6 +309,16 @@
                 const mapaAberto = ref(false);
                 const leituraEmAndamento = ref(false);
                 const erroLeitura = ref('');
+                const usuarios = ref([]);
+                const usuarioSelecionado = ref('');
+                const senha = ref('');
+                const autenticado = ref(false);
+                const carregandoUsuarios = ref(false);
+                const erroLogin = ref('');
+                const erroCarregamentoUsuarios = ref(false);
+                const salvandoPontuacao = ref(false);
+                const erroPontuacao = ref('');
+                const saldoMoedas = ref(null);
 
                 const alternativasAtuais = ref([]);
                 const resumoRespostas = ref([]);
@@ -324,6 +385,53 @@
                     }
                 };
 
+                const buscarUsuarios = async () => {
+                    carregandoUsuarios.value = true;
+                    erroLogin.value = '';
+                    erroCarregamentoUsuarios.value = false;
+
+                    try {
+                        const response = await fetch(API_CARTEIRA_URL);
+                        if (!response.ok) {
+                            throw new Error(`A API respondeu com status ${response.status}.`);
+                        }
+
+                        const resultado = await response.json();
+                        const listaUsuarios = resultado?.value?.usuarios;
+                        if (!Array.isArray(listaUsuarios)) {
+                            throw new Error('A resposta da API não contém a lista de usuários esperada.');
+                        }
+
+                        usuarios.value = listaUsuarios.filter(usuario =>
+                            Number.isInteger(Number(usuario.id))
+                            && typeof usuario.nome === 'string'
+                            && typeof usuario.senha === 'string'
+                            && Number.isFinite(Number(usuario.coins))
+                        );
+                        if (usuarios.value.length === 0) {
+                            throw new Error('A API não retornou usuários válidos.');
+                        }
+                    } catch (err) {
+                        usuarios.value = [];
+                        erroCarregamentoUsuarios.value = true;
+                        erroLogin.value = 'Erro ao carregar usuários: ' + err.message;
+                    } finally {
+                        carregandoUsuarios.value = false;
+                    }
+                };
+
+                const entrar = () => {
+                    erroLogin.value = '';
+                    const usuario = usuarios.value.find(item => item.id === Number(usuarioSelecionado.value));
+                    if (!usuario || usuario.senha !== senha.value) {
+                        erroLogin.value = 'Usuário ou senha incorretos.';
+                        return;
+                    }
+
+                    autenticado.value = true;
+                    senha.value = '';
+                };
+
                 const iniciarSimulado = () => {
                     const questoesEmbaralhadas = embaralharArray(bancoQuestoes.value);
                     questoes.value = questoesEmbaralhadas.slice(0, quantidadeSelecionada.value);
@@ -334,11 +442,59 @@
                     finalizado.value = false;
                     mapaAberto.value = false;
                     resumoRespostas.value = [];
+                    salvandoPontuacao.value = false;
+                    erroPontuacao.value = '';
+                    saldoMoedas.value = null;
                     prepararAlternativas();
                 };
 
+                const registrarPontos = async () => {
+                    const usuarioId = Number(usuarioSelecionado.value);
+                    const moedasGanhar = pontuacao.value * 5;
+                    salvandoPontuacao.value = true;
+                    erroPontuacao.value = '';
+
+                    try {
+                        const respostaAtual = await fetch(API_CARTEIRA_URL);
+                        if (!respostaAtual.ok) {
+                            throw new Error(`A API respondeu com status ${respostaAtual.status} ao consultar o saldo.`);
+                        }
+
+                        const dadosAtuais = await respostaAtual.json();
+                        const listaUsuarios = dadosAtuais?.value?.usuarios;
+                        if (!Array.isArray(listaUsuarios)) {
+                            throw new Error('A API não retornou a lista de usuários esperada para atualizar o saldo.');
+                        }
+
+                        const usuario = listaUsuarios.find(item => Number(item.id) === usuarioId);
+                        if (!usuario) {
+                            throw new Error('O usuário não foi encontrado na carteira da API.');
+                        }
+
+                        usuario.coins = Number(usuario.coins) + moedasGanhar;
+                        const respostaGravacao = await fetch(API_GRAVAR_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                bucket: 'senai',
+                                key: 'coinsnew',
+                                value: { usuarios: listaUsuarios }
+                            })
+                        });
+                        if (!respostaGravacao.ok) {
+                            throw new Error(`A API respondeu com status ${respostaGravacao.status} ao gravar o saldo.`);
+                        }
+
+                        saldoMoedas.value = usuario.coins;
+                    } catch (err) {
+                        erroPontuacao.value = err.message;
+                    } finally {
+                        salvandoPontuacao.value = false;
+                    }
+                };
+
                 const manipularTeclado = (e) => {
-                    if (carregando.value || erro.value) return;
+                    if (carregando.value || erro.value || salvandoPontuacao.value) return;
                     if (mapaAberto.value) {
                         if (e.key === 'Escape') mapaAberto.value = false;
                         return;
@@ -362,6 +518,7 @@
 
                 onMounted(() => {
                     buscarQuestoes();
+                    buscarUsuarios();
                     window.addEventListener('keydown', manipularTeclado);
                 });
 
@@ -426,6 +583,7 @@
                 const porcentagemAcertos = computed(() =>
                     questoes.value.length ? Math.round((pontuacao.value / questoes.value.length) * 100) : 0
                 );
+                const pontosQuiz = computed(() => pontuacao.value * 5);
 
                 const statusDesempenho = computed(() => {
                     const pct = porcentagemAcertos.value;
@@ -480,6 +638,7 @@
                         prepararAlternativas();
                     } else {
                         finalizado.value = true;
+                        registrarPontos();
                     }
                 };
 
@@ -503,7 +662,18 @@
                     respostaSelecionada,
                     respondido,
                     pontuacao,
+                    pontosQuiz,
                     finalizado,
+                    usuarios,
+                    usuarioSelecionado,
+                    senha,
+                    autenticado,
+                    carregandoUsuarios,
+                    erroLogin,
+                    erroCarregamentoUsuarios,
+                    salvandoPontuacao,
+                    erroPontuacao,
+                    saldoMoedas,
                     porcentagemAcertos,
                     resumoRespostas,
                     statusDesempenho,
@@ -523,7 +693,9 @@
                     proximaQuestao,
                     reiniciar,
                     iniciarSimulado,
-                    buscarQuestoes
+                    buscarQuestoes,
+                    buscarUsuarios,
+                    entrar
                 };
             }
         }).mount('#app');
