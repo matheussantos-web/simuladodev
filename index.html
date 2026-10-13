@@ -250,6 +250,57 @@
                     </div>
                 </div>
 
+                <!-- Ranking -->
+                <section class="border-t border-slate-200 dark:border-slate-700 pt-6 space-y-4">
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-900 dark:text-white">Ranking do simulado</h3>
+                        <p class="text-sm text-slate-500 dark:text-slate-400">
+                            Vale o melhor aproveitamento de cada usuário; empates são decididos pelo número de acertos.
+                        </p>
+                        <p v-if="resultadoNoRanking && posicaoRanking"
+                            class="mt-2 text-sm font-semibold text-indigo-700 dark:text-indigo-300">
+                            {{ resultadoAtualizouRanking ? 'Seu resultado entrou no ranking!' : 'Seu melhor resultado continua no ranking.' }}
+                            Você está em {{ posicaoRanking }}º lugar.
+                        </p>
+                    </div>
+
+                    <p v-if="salvandoRanking" role="status" class="text-sm text-slate-500 dark:text-slate-400">
+                        Salvando seu resultado no ranking...
+                    </p>
+                    <p v-else-if="erroRanking" role="alert" class="text-sm text-red-600 dark:text-red-400">
+                        Não foi possível salvar/carregar o ranking: {{ erroRanking }}
+                    </p>
+
+                    <ol v-if="ranking.length" class="divide-y divide-slate-200 dark:divide-slate-700 rounded-xl border border-slate-200 dark:border-slate-700">
+                        <li v-for="(item, index) in ranking" :key="item.usuarioId"
+                            :class="['flex items-center justify-between gap-3 p-3', item.usuarioId === Number(usuarioSelecionado) ? 'bg-indigo-50 dark:bg-indigo-950/30' : '']">
+                            <div class="flex min-w-0 items-center gap-3">
+                                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-sm font-bold">
+                                    {{ index + 1 }}
+                                </span>
+                                <div class="min-w-0">
+                                    <p class="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{{ item.nome }}</p>
+                                    <p class="text-xs text-slate-500 dark:text-slate-400">
+                                        {{ item.acertos }}/{{ item.total }} acertos · {{ item.percentual }}%
+                                    </p>
+                                </div>
+                            </div>
+                            <time :datetime="item.data" class="shrink-0 text-xs text-slate-500 dark:text-slate-400">
+                                {{ new Date(item.data).toLocaleDateString('pt-BR') }}
+                            </time>
+                        </li>
+                    </ol>
+                    <p v-else-if="!salvandoRanking && !erroRanking"
+                        class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-sm text-slate-500 dark:text-slate-400">
+                        Você é o primeiro a aparecer no ranking. Conclua o simulado para registrar seu resultado.
+                    </p>
+                    <button v-if="erroRanking" @click="registrarResultadoRanking"
+                        :disabled="salvandoRanking"
+                        class="rounded-lg border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50">
+                        Tentar salvar no ranking novamente
+                    </button>
+                </section>
+
                 <!-- Lista de Revisão -->
                 <div class="mt-8 border-t border-slate-200 dark:border-slate-700 pt-6 space-y-4">
                     <h3 class="text-md font-bold text-slate-800 dark:text-slate-200">Revisão das Questões</h3>
@@ -269,7 +320,7 @@
                     </div>
                 </div>
 
-                <button @click="reiniciar" :disabled="salvandoPontuacao"
+                <button @click="reiniciar" :disabled="salvandoPontuacao || salvandoRanking"
                     class="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 px-8 rounded-xl transition shadow-md">
                     Refazer Simulado (Novas Questões)
                 </button>
@@ -286,6 +337,7 @@
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         const API_CARTEIRA_URL = 'https://onlinestorage.you.tec.br/api/getkey/senai/coinsnew';
         const API_GRAVAR_URL = 'https://onlinestorage.you.tec.br/api/';
+        const API_RANKING_URL = 'https://onlinestorage.you.tec.br/api/getkey/senai/rankingquiz';
 
         createApp({
             setup() {
@@ -319,6 +371,11 @@
                 const salvandoPontuacao = ref(false);
                 const erroPontuacao = ref('');
                 const saldoMoedas = ref(null);
+                const ranking = ref([]);
+                const salvandoRanking = ref(false);
+                const erroRanking = ref('');
+                const resultadoNoRanking = ref(false);
+                const resultadoAtualizouRanking = ref(false);
 
                 const alternativasAtuais = ref([]);
                 const resumoRespostas = ref([]);
@@ -493,8 +550,109 @@
                     }
                 };
 
+                const ordenarRanking = (resultados) => resultados.sort((a, b) =>
+                    (b.acertos / b.total) - (a.acertos / a.total)
+                    || b.acertos - a.acertos
+                    || new Date(a.data) - new Date(b.data)
+                );
+
+                const registrarResultadoRanking = async () => {
+                    const usuarioId = Number(usuarioSelecionado.value);
+                    const acertos = pontuacao.value;
+                    const total = questoes.value.length;
+                    const percentual = total ? Math.round((acertos / total) * 100) : 0;
+                    const usuario = usuarios.value.find(item => Number(item.id) === usuarioId);
+                    if (!usuario) {
+                        erroRanking.value = 'Não foi possível identificar o usuário deste resultado.';
+                        return;
+                    }
+
+                    salvandoRanking.value = true;
+                    erroRanking.value = '';
+                    resultadoNoRanking.value = false;
+
+                    try {
+                        const respostaRanking = await fetch(API_RANKING_URL);
+                        let resultados = [];
+                        if (respostaRanking.ok) {
+                            const dadosRanking = await respostaRanking.json();
+                            const registros = dadosRanking?.value?.resultados;
+                            if (!Array.isArray(registros)) {
+                                throw new Error('A API não retornou a lista de resultados esperada.');
+                            }
+                            resultados = registros.map(item => {
+                                if (
+                                    !item
+                                    || !Number.isInteger(Number(item.usuarioId))
+                                    || typeof item.nome !== 'string'
+                                    || !Number.isInteger(Number(item.acertos))
+                                    || Number(item.acertos) < 0
+                                    || !Number.isInteger(Number(item.total))
+                                    || Number(item.total) <= 0
+                                    || Number(item.acertos) > Number(item.total)
+                                    || Number.isNaN(Date.parse(item.data))
+                                ) {
+                                    throw new Error('O ranking contém um resultado inválido; os dados não foram alterados.');
+                                }
+
+                                return {
+                                    usuarioId: Number(item.usuarioId),
+                                    nome: item.nome,
+                                    acertos: Number(item.acertos),
+                                    total: Number(item.total),
+                                    percentual: Math.round((Number(item.acertos) / Number(item.total)) * 100),
+                                    data: item.data
+                                };
+                            });
+                        } else if (respostaRanking.status !== 404) {
+                            throw new Error(`A API respondeu com status ${respostaRanking.status} ao consultar o ranking.`);
+                        }
+
+                        const resultadoAnterior = resultados.find(item => item.usuarioId === usuarioId);
+                        const resultadoNovo = {
+                            usuarioId,
+                            nome: usuario.nome.trim(),
+                            acertos,
+                            total,
+                            percentual,
+                            data: new Date().toISOString()
+                        };
+                        const superaAnterior = !resultadoAnterior
+                            || resultadoNovo.acertos * resultadoAnterior.total > resultadoAnterior.acertos * resultadoNovo.total
+                            || (
+                                resultadoNovo.acertos * resultadoAnterior.total === resultadoAnterior.acertos * resultadoNovo.total
+                                && resultadoNovo.acertos > resultadoAnterior.acertos
+                            );
+
+                        if (superaAnterior) {
+                            resultados = resultados.filter(item => item.usuarioId !== usuarioId);
+                            resultados.push(resultadoNovo);
+                            const respostaGravacao = await fetch(API_GRAVAR_URL, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    bucket: 'senai',
+                                    key: 'rankingquiz',
+                                    value: { resultados }
+                                })
+                            });
+                            if (!respostaGravacao.ok) {
+                                throw new Error(`A API respondeu com status ${respostaGravacao.status} ao gravar o ranking.`);
+                            }
+                        }
+
+                        ranking.value = ordenarRanking(resultados);
+                        resultadoNoRanking.value = ranking.value.some(item => item.usuarioId === usuarioId);
+                        resultadoAtualizouRanking.value = superaAnterior;
+                    } catch (err) {
+                        erroRanking.value = err.message;
+                    } finally {
+                        salvandoRanking.value = false;
+                    }
+                };
+
                 const manipularTeclado = (e) => {
-                    if (carregando.value || erro.value || salvandoPontuacao.value) return;
+                    if (carregando.value || erro.value || salvandoPontuacao.value || salvandoRanking.value) return;
                     if (mapaAberto.value) {
                         if (e.key === 'Escape') mapaAberto.value = false;
                         return;
@@ -639,6 +797,7 @@
                     } else {
                         finalizado.value = true;
                         registrarPontos();
+                        registrarResultadoRanking();
                     }
                 };
 
@@ -674,6 +833,15 @@
                     salvandoPontuacao,
                     erroPontuacao,
                     saldoMoedas,
+                    ranking,
+                    salvandoRanking,
+                    erroRanking,
+                    resultadoNoRanking,
+                    resultadoAtualizouRanking,
+                    posicaoRanking: computed(() => {
+                        const indice = ranking.value.findIndex(item => item.usuarioId === Number(usuarioSelecionado.value));
+                        return indice === -1 ? null : indice + 1;
+                    }),
                     porcentagemAcertos,
                     resumoRespostas,
                     statusDesempenho,
@@ -695,7 +863,8 @@
                     iniciarSimulado,
                     buscarQuestoes,
                     buscarUsuarios,
-                    entrar
+                    entrar,
+                    registrarResultadoRanking
                 };
             }
         }).mount('#app');
