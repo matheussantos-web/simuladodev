@@ -14,6 +14,7 @@
     </script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcrypt.min.js"></script>
 </head>
 
 <body class="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-sans min-h-screen flex items-center justify-center p-4 transition-colors duration-200">
@@ -54,7 +55,7 @@
                     <div>
                         <label for="usuario" class="block text-sm font-medium mb-2">Usuário</label>
                         <select id="usuario" v-model="usuarioSelecionado" required
-                            :disabled="carregandoUsuarios || usuarios.length === 0"
+                            :disabled="carregandoUsuarios || validandoSenha || usuarios.length === 0"
                             class="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-60">
                             <option value="" disabled>Selecione seu nome</option>
                             <option v-for="usuario in usuarios" :key="usuario.id" :value="usuario.id">
@@ -65,13 +66,14 @@
                     <div>
                         <label for="senha" class="block text-sm font-medium mb-2">Senha</label>
                         <input id="senha" v-model="senha" type="password" autocomplete="current-password" required
+                            :disabled="validandoSenha"
                             class="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
                     </div>
                     <p v-if="carregandoUsuarios" class="text-sm text-slate-500 dark:text-slate-400">Carregando usuários...</p>
                     <p v-if="erroLogin" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ erroLogin }}</p>
-                    <button type="submit" :disabled="carregandoUsuarios || usuarios.length === 0 || !usuarioSelecionado || !senha"
+                    <button type="submit" :disabled="carregandoUsuarios || validandoSenha || usuarios.length === 0 || !usuarioSelecionado || !senha"
                         class="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 rounded-xl transition shadow-md">
-                        Entrar
+                        {{ validandoSenha ? 'Validando senha...' : 'Entrar' }}
                     </button>
                     <button v-if="erroCarregamentoUsuarios" type="button" @click="buscarUsuarios"
                         :disabled="carregandoUsuarios"
@@ -366,6 +368,7 @@
                 const senha = ref('');
                 const autenticado = ref(false);
                 const carregandoUsuarios = ref(false);
+                const validandoSenha = ref(false);
                 const erroLogin = ref('');
                 const erroCarregamentoUsuarios = ref(false);
                 const salvandoPontuacao = ref(false);
@@ -477,16 +480,44 @@
                     }
                 };
 
-                const entrar = () => {
+                const entrar = async () => {
                     erroLogin.value = '';
                     const usuario = usuarios.value.find(item => item.id === Number(usuarioSelecionado.value));
-                    if (!usuario || usuario.senha !== senha.value) {
+                    if (!usuario) {
                         erroLogin.value = 'Usuário ou senha incorretos.';
                         return;
                     }
 
-                    autenticado.value = true;
-                    senha.value = '';
+                    if (!window.dcodeIO?.bcrypt) {
+                        erroLogin.value = 'Não foi possível carregar o serviço de validação da senha. Atualize a página e tente novamente.';
+                        return;
+                    }
+
+                    validandoSenha.value = true;
+                    try {
+                        const senhaCorreta = await new Promise((resolve, reject) => {
+                            window.dcodeIO.bcrypt.compare(senha.value, usuario.senha, (err, corresponde) => {
+                                if (err) {
+                                    reject(err);
+                                    return;
+                                }
+                                resolve(corresponde);
+                            });
+                        });
+
+                        if (!senhaCorreta) {
+                            erroLogin.value = 'Usuário ou senha incorretos.';
+                            return;
+                        }
+
+                        autenticado.value = true;
+                        senha.value = '';
+                    } catch (err) {
+                        console.error('Erro ao validar a senha com bcrypt:', err);
+                        erroLogin.value = 'Não foi possível validar a senha. Confirme se o hash bcrypt cadastrado é válido.';
+                    } finally {
+                        validandoSenha.value = false;
+                    }
                 };
 
                 const iniciarSimulado = () => {
@@ -828,6 +859,7 @@
                     senha,
                     autenticado,
                     carregandoUsuarios,
+                    validandoSenha,
                     erroLogin,
                     erroCarregamentoUsuarios,
                     salvandoPontuacao,
