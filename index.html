@@ -188,9 +188,9 @@
                     <button v-for="(alt, index) in alternativasAtuais"
                         :key="alt.chave" 
                         @click="selecionarResposta(alt.chave)" 
-                        :disabled="respondido" 
+                        :disabled="respondido || modoTartarugaBloqueado" 
                         :class="[
-                            'w-full text-left p-4 rounded-xl border transition-all flex items-center justify-between active:scale-[0.99]',
+                            'w-full text-left p-4 rounded-xl border transition-all flex items-center justify-between active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60',
                             obterClasseBotao(alt.chave)
                         ]">
                         <div class="flex items-center gap-3">
@@ -204,8 +204,21 @@
                     </button>
                 </div>
 
+                <p v-if="modoTartarugaBloqueado" role="status"
+                    class="mb-4 rounded-lg bg-amber-50 dark:bg-amber-950/30 p-3 text-sm text-amber-800 dark:text-amber-300">
+                    🐢 Modo Tartaruga ativado: respire fundo; as alternativas liberam em 4 segundos.
+                </p>
+
                 <!-- Botão Próximo -->
                 <div v-if="respondido">
+                    <p v-if="respostaRapidaAtual" role="status"
+                        class="mb-4 rounded-lg bg-rose-50 dark:bg-rose-950/30 p-3 text-sm text-rose-800 dark:text-rose-300">
+                        ⚡ Resposta em velocidade de teletransporte! Esta questão não rende moedas.
+                    </p>
+                    <p v-if="modoTartarugaRestante > 0" role="status"
+                        class="mb-4 rounded-lg bg-amber-50 dark:bg-amber-950/30 p-3 text-sm text-amber-800 dark:text-amber-300">
+                        🐢 O modo tartaruga vai acompanhar você nas próximas {{ modoTartarugaRestante }} questões. O cérebro também precisa abrir o arquivo.
+                    </p>
                     <div class="mb-6 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/30 p-4">
                         <h3 class="font-bold text-indigo-900 dark:text-indigo-200 mb-1">Explicação</h3>
                         <p class="text-sm text-indigo-900 dark:text-indigo-100">{{ explicacaoAtual }}</p>
@@ -242,6 +255,9 @@
 
                     <div class="mx-auto max-w-sm rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-4">
                         <p class="font-bold text-amber-800 dark:text-amber-300">+{{ pontosQuiz }} moedas</p>
+                        <p v-if="respostasRapidas > 0" class="mt-1 text-sm text-amber-700 dark:text-amber-400">
+                            {{ respostasRapidas }} acerto(s) rápido(s) ficaram sem moedas. O modo tartaruga não mexe no seu saldo antigo.
+                        </p>
                         <p v-if="salvandoPontuacao" class="mt-1 text-sm text-amber-700 dark:text-amber-400">Atualizando seu saldo...</p>
                         <p v-else-if="erroPontuacao" role="alert" class="mt-1 text-sm text-red-700 dark:text-red-400">
                             Não foi possível salvar as moedas: {{ erroPontuacao }}
@@ -340,6 +356,8 @@
         const API_CARTEIRA_URL = 'https://onlinestorage.you.tec.br/api/getkey/senai/coinsnew';
         const API_GRAVAR_URL = 'https://onlinestorage.you.tec.br/api/';
         const API_RANKING_URL = 'https://onlinestorage.you.tec.br/api/getkey/senai/rankingquiz';
+        const LIMITE_RESPOSTA_RAPIDA_MS = 2000;
+        const DURACAO_MODO_TARTARUGA_MS = 4000;
 
         createApp({
             setup() {
@@ -358,6 +376,11 @@
                 const respostaSelecionada = ref(null);
                 const respondido = ref(false);
                 const pontuacao = ref(0);
+                const pontosComMoedas = ref(0);
+                const respostasRapidas = ref(0);
+                const respostaRapidaAtual = ref(false);
+                const modoTartarugaRestante = ref(0);
+                const modoTartarugaBloqueado = ref(false);
                 const finalizado = ref(false);
                 const modoEscuro = ref(false);
                 const mapaAberto = ref(false);
@@ -383,6 +406,32 @@
                 const alternativasAtuais = ref([]);
                 const resumoRespostas = ref([]);
                 let falaAtual = null;
+                let respostasRapidasSeguidas = 0;
+                let inicioQuestaoAt = 0;
+                let temporizadorTartaruga = null;
+
+                const limparTemporizadorTartaruga = () => {
+                    if (temporizadorTartaruga !== null) {
+                        window.clearTimeout(temporizadorTartaruga);
+                        temporizadorTartaruga = null;
+                    }
+                    modoTartarugaBloqueado.value = false;
+                };
+
+                const iniciarRelogioQuestao = () => {
+                    inicioQuestaoAt = Date.now();
+                    respostaRapidaAtual.value = false;
+                    if (modoTartarugaRestante.value > 0) {
+                        modoTartarugaRestante.value--;
+                        modoTartarugaBloqueado.value = true;
+                        temporizadorTartaruga = window.setTimeout(() => {
+                            modoTartarugaBloqueado.value = false;
+                            temporizadorTartaruga = null;
+                        }, DURACAO_MODO_TARTARUGA_MS);
+                    } else {
+                        modoTartarugaBloqueado.value = false;
+                    }
+                };
 
                 const alternarModoEscuro = () => {
                     modoEscuro.value = !modoEscuro.value;
@@ -462,12 +511,14 @@
                             throw new Error('A resposta da API não contém a lista de usuários esperada.');
                         }
 
-                        usuarios.value = listaUsuarios.filter(usuario =>
-                            Number.isInteger(Number(usuario.id))
-                            && typeof usuario.nome === 'string'
-                            && typeof usuario.senha === 'string'
-                            && Number.isFinite(Number(usuario.coins))
-                        );
+                        usuarios.value = listaUsuarios
+                            .filter(usuario =>
+                                Number.isInteger(Number(usuario.id))
+                                && typeof usuario.nome === 'string'
+                                && typeof usuario.senha === 'string'
+                                && Number.isFinite(Number(usuario.coins))
+                            )
+                            .map(usuario => ({ ...usuario, id: Number(usuario.id) }));
                         if (usuarios.value.length === 0) {
                             throw new Error('A API não retornou usuários válidos.');
                         }
@@ -482,7 +533,7 @@
 
                 const entrar = async () => {
                     erroLogin.value = '';
-                    const usuario = usuarios.value.find(item => item.id === Number(usuarioSelecionado.value));
+                    const usuario = usuarios.value.find(item => Number(item.id) === Number(usuarioSelecionado.value));
                     if (!usuario) {
                         erroLogin.value = 'Usuário ou senha incorretos.';
                         return;
@@ -521,12 +572,18 @@
                 };
 
                 const iniciarSimulado = () => {
+                    limparTemporizadorTartaruga();
                     const questoesEmbaralhadas = embaralharArray(bancoQuestoes.value);
                     questoes.value = questoesEmbaralhadas.slice(0, quantidadeSelecionada.value);
                     indiceAtual.value = 0;
                     respostaSelecionada.value = null;
                     respondido.value = false;
                     pontuacao.value = 0;
+                    pontosComMoedas.value = 0;
+                    respostasRapidas.value = 0;
+                    respostaRapidaAtual.value = false;
+                    respostasRapidasSeguidas = 0;
+                    modoTartarugaRestante.value = 0;
                     finalizado.value = false;
                     mapaAberto.value = false;
                     resumoRespostas.value = [];
@@ -534,11 +591,12 @@
                     erroPontuacao.value = '';
                     saldoMoedas.value = null;
                     prepararAlternativas();
+                    iniciarRelogioQuestao();
                 };
 
                 const registrarPontos = async () => {
                     const usuarioId = Number(usuarioSelecionado.value);
-                    const moedasGanhar = pontuacao.value * 5;
+                    const moedasGanhar = pontosComMoedas.value * 5;
                     salvandoPontuacao.value = true;
                     erroPontuacao.value = '';
 
@@ -713,6 +771,7 @@
 
                 onUnmounted(() => {
                     window.removeEventListener('keydown', manipularTeclado);
+                    limparTemporizadorTartaruga();
                     pararLeitura();
                 });
 
@@ -772,7 +831,7 @@
                 const porcentagemAcertos = computed(() =>
                     questoes.value.length ? Math.round((pontuacao.value / questoes.value.length) * 100) : 0
                 );
-                const pontosQuiz = computed(() => pontuacao.value * 5);
+                const pontosQuiz = computed(() => pontosComMoedas.value * 5);
 
                 const statusDesempenho = computed(() => {
                     const pct = porcentagemAcertos.value;
@@ -782,13 +841,32 @@
                 });
 
                 const selecionarResposta = (chave) => {
-                    if (respondido.value) return;
+                    if (respondido.value || modoTartarugaBloqueado.value) return;
                     pararLeitura();
                     respostaSelecionada.value = chave;
                     respondido.value = true;
 
+                    const respostaRapida = Date.now() - inicioQuestaoAt < LIMITE_RESPOSTA_RAPIDA_MS;
+                    respostaRapidaAtual.value = respostaRapida;
+                    if (respostaRapida) {
+                        respostasRapidas.value++;
+                        respostasRapidasSeguidas++;
+                        if (respostasRapidasSeguidas >= 2) {
+                            modoTartarugaRestante.value = 3;
+                        }
+                    } else {
+                        respostasRapidasSeguidas = 0;
+                    }
+
                     const acertou = chave === questaoAtual.value.gabarito;
-                    if (acertou) pontuacao.value++;
+                    if (acertou) {
+                        pontuacao.value++;
+                        if (respostaRapida) {
+                            respostasRapidas.value++;
+                        } else {
+                            pontosComMoedas.value++;
+                        }
+                    }
 
                     resumoRespostas.value.push({
                         id: questaoAtual.value.id,
@@ -825,6 +903,7 @@
                         respostaSelecionada.value = null;
                         respondido.value = false;
                         prepararAlternativas();
+                        iniciarRelogioQuestao();
                     } else {
                         finalizado.value = true;
                         registrarPontos();
@@ -852,6 +931,10 @@
                     respostaSelecionada,
                     respondido,
                     pontuacao,
+                    respostasRapidas,
+                    respostaRapidaAtual,
+                    modoTartarugaRestante,
+                    modoTartarugaBloqueado,
                     pontosQuiz,
                     finalizado,
                     usuarios,
