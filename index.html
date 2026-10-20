@@ -213,7 +213,7 @@
                 <div v-if="respondido">
                     <p v-if="respostaRapidaAtual" role="status"
                         class="mb-4 rounded-lg bg-rose-50 dark:bg-rose-950/30 p-3 text-sm text-rose-800 dark:text-rose-300">
-                        ⚡ Resposta em velocidade de teletransporte! Esta questão não rende moedas.
+                        ⚡ Acerto em velocidade de teletransporte! Esta resposta não rende moedas.
                     </p>
                     <p v-if="modoTartarugaRestante > 0" role="status"
                         class="mb-4 rounded-lg bg-amber-50 dark:bg-amber-950/30 p-3 text-sm text-amber-800 dark:text-amber-300">
@@ -356,7 +356,9 @@
         const API_CARTEIRA_URL = 'https://onlinestorage.you.tec.br/api/getkey/senai/coinsnew';
         const API_GRAVAR_URL = 'https://onlinestorage.you.tec.br/api/';
         const API_RANKING_URL = 'https://onlinestorage.you.tec.br/api/getkey/senai/rankingquiz';
-        const LIMITE_RESPOSTA_RAPIDA_MS = 2000;
+        const TEMPO_MINIMO_RESPOSTA_MS = 3000;
+        const TEMPO_POR_CARACTERE_MS = 35;
+        const TEMPO_MAXIMO_RESPOSTA_MS = 12000;
         const DURACAO_MODO_TARTARUGA_MS = 4000;
 
         createApp({
@@ -408,7 +410,33 @@
                 let falaAtual = null;
                 let respostasRapidasSeguidas = 0;
                 let inicioQuestaoAt = 0;
+                let tempoVisivelAcumulado = 0;
+                let cronometroQuestaoAtivo = false;
                 let temporizadorTartaruga = null;
+
+                const obterTempoMinimoRespostaMs = () => {
+                    const textoQuestao = [
+                        questaoAtual.value?.enunciado || '',
+                        ...alternativasAtuais.value.map(alternativa => alternativa.texto || '')
+                    ].join(' ');
+                    const tempoEstimado = TEMPO_MINIMO_RESPOSTA_MS
+                        + textoQuestao.length * TEMPO_POR_CARACTERE_MS;
+                    return Math.min(TEMPO_MAXIMO_RESPOSTA_MS, tempoEstimado);
+                };
+
+                const obterTempoVisivelQuestaoMs = () => tempoVisivelAcumulado
+                    + (cronometroQuestaoAtivo ? performance.now() - inicioQuestaoAt : 0);
+
+                const atualizarCronometroVisivel = () => {
+                    const agora = performance.now();
+                    if (document.hidden && cronometroQuestaoAtivo) {
+                        tempoVisivelAcumulado += agora - inicioQuestaoAt;
+                        cronometroQuestaoAtivo = false;
+                    } else if (!document.hidden && !cronometroQuestaoAtivo && !respondido.value) {
+                        inicioQuestaoAt = agora;
+                        cronometroQuestaoAtivo = true;
+                    }
+                };
 
                 const limparTemporizadorTartaruga = () => {
                     if (temporizadorTartaruga !== null) {
@@ -419,7 +447,9 @@
                 };
 
                 const iniciarRelogioQuestao = () => {
-                    inicioQuestaoAt = Date.now();
+                    inicioQuestaoAt = performance.now();
+                    tempoVisivelAcumulado = 0;
+                    cronometroQuestaoAtivo = !document.hidden;
                     respostaRapidaAtual.value = false;
                     if (modoTartarugaRestante.value > 0) {
                         modoTartarugaRestante.value--;
@@ -767,10 +797,12 @@
                     buscarQuestoes();
                     buscarUsuarios();
                     window.addEventListener('keydown', manipularTeclado);
+                    document.addEventListener('visibilitychange', atualizarCronometroVisivel);
                 });
 
                 onUnmounted(() => {
                     window.removeEventListener('keydown', manipularTeclado);
+                    document.removeEventListener('visibilitychange', atualizarCronometroVisivel);
                     limparTemporizadorTartaruga();
                     pararLeitura();
                 });
@@ -841,15 +873,13 @@
                 });
 
                 const selecionarResposta = (chave) => {
-                    if (respondido.value || modoTartarugaBloqueado.value) return;
+                    if (respondido.value || modoTartarugaBloqueado.value || document.hidden) return;
                     pararLeitura();
                     respostaSelecionada.value = chave;
                     respondido.value = true;
 
-                    const respostaRapida = Date.now() - inicioQuestaoAt < LIMITE_RESPOSTA_RAPIDA_MS;
-                    respostaRapidaAtual.value = respostaRapida;
+                    const respostaRapida = obterTempoVisivelQuestaoMs() < obterTempoMinimoRespostaMs();
                     if (respostaRapida) {
-                        respostasRapidas.value++;
                         respostasRapidasSeguidas++;
                         if (respostasRapidasSeguidas >= 2) {
                             modoTartarugaRestante.value = 3;
@@ -859,6 +889,7 @@
                     }
 
                     const acertou = chave === questaoAtual.value.gabarito;
+                    respostaRapidaAtual.value = respostaRapida && acertou;
                     if (acertou) {
                         pontuacao.value++;
                         if (respostaRapida) {
