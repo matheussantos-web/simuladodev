@@ -356,9 +356,9 @@
         const API_CARTEIRA_URL = 'https://onlinestorage.you.tec.br/api/getkey/senai/coinsnew';
         const API_GRAVAR_URL = 'https://onlinestorage.you.tec.br/api/';
         const API_RANKING_URL = 'https://onlinestorage.you.tec.br/api/getkey/senai/rankingquiz';
-        const TEMPO_MINIMO_RESPOSTA_MS = 3000;
-        const TEMPO_POR_CARACTERE_MS = 35;
-        const TEMPO_MAXIMO_RESPOSTA_MS = 12000;
+        const TEMPO_MINIMO_RESPOSTA_MS = 1200;
+        const TEMPO_POR_CARACTERE_MS = 8;
+        const TEMPO_MAXIMO_RESPOSTA_MS = 5000;
         const DURACAO_MODO_TARTARUGA_MS = 4000;
 
         createApp({
@@ -415,10 +415,7 @@
                 let temporizadorTartaruga = null;
 
                 const obterTempoMinimoRespostaMs = () => {
-                    const textoQuestao = [
-                        questaoAtual.value?.enunciado || '',
-                        ...alternativasAtuais.value.map(alternativa => alternativa.texto || '')
-                    ].join(' ');
+                    const textoQuestao = questaoAtual.value?.enunciado?.trim() || '';
                     const tempoEstimado = TEMPO_MINIMO_RESPOSTA_MS
                         + textoQuestao.length * TEMPO_POR_CARACTERE_MS;
                     return Math.min(TEMPO_MAXIMO_RESPOSTA_MS, tempoEstimado);
